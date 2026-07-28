@@ -309,7 +309,7 @@ def render_dashboard(df):
                 color_discrete_sequence=['#1e293b']
             )
             fig_cause.update_traces(textposition='outside')
-            fig_cause.update_layout(yaxis=dict(autorange="reverse"), margin=dict(l=10, r=10, t=30, b=10), height=300)
+            fig_cause.update_layout(yaxis=dict(autorange="reversed"), margin=dict(l=10, r=10, t=30, b=10), height=300)
             st.plotly_chart(fig_cause, use_container_width=True)
 
     # Recent Unresolved Items Table
