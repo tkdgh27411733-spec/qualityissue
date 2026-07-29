@@ -9,7 +9,7 @@ import json
 # ====================================================
 # [필수] 구글 웹 앱 URL을 입력하세요
 # ====================================================
-GAS_URL = "여기에_웹앱_URL을_붙여넣으세요"
+GAS_URL = "https://script.google.com/macros/s/AKfycbxhvD57DDgpuqzCJ6-wGJUAihh71fCV7GWumrpqJB4kjhbAxkXjZu3baBpoZifz-JR5Pg/exec"
 
 # 페이지 설정
 st.set_page_config(page_title="스마트 종합 품질관리 시스템 (Smart QMS)", page_icon="🛡️", layout="wide")
