@@ -9,7 +9,7 @@ import json
 # ====================================================
 # [필수] 구글 웹 앱 URL을 입력하세요
 # ====================================================
-GAS_URL = "https://script.google.com/macros/s/AKfycbwzk00kcGxZa88M6ZzFZc7Acedhr-9Ly_F1bgr97U6Fb9jhTcMemmy343wbQAcSiLqe_g/exec"
+GAS_URL = "여기에_웹앱_URL을_붙여넣으세요"
 
 # 페이지 설정
 st.set_page_config(page_title="스마트 종합 품질관리 시스템 (Smart QMS)", page_icon="🛡️", layout="wide")
@@ -58,12 +58,10 @@ def load_data(sheet_name, default_fallback):
     return st.session_state.get(sheet_name, default_fallback)
 
 def save_data(sheet_name, data_dict):
-    # 1. 세션 상태에 즉시 안전하게 추가 (화면 반영 보장)
     if sheet_name not in st.session_state:
         st.session_state[sheet_name] = []
     st.session_state[sheet_name].append(data_dict)
 
-    # 2. 구글 시트 전송 시도
     if GAS_URL.startswith("http"):
         try:
             payload = {"sheet": sheet_name, "data": data_dict}
@@ -107,7 +105,6 @@ if selected_menu == "📊 통합 대시보드":
     st.title("📊 통합 품질 모니터링 대시보드")
     st.markdown("전체 품질 데이터와 주요 공정별 지표를 한눈에 확인할 수 있는 대시보드입니다.")
     
-    # 최신 세션 데이터 활용
     iqc_data = st.session_state.IQC
     pqc_data = st.session_state.PQC
     voc_data = st.session_state.VOC
@@ -198,7 +195,7 @@ if selected_menu == "📊 통합 대시보드":
 elif selected_menu == "📦 IQC (수입/입고 검사)":
     st.title("📦 IQC 수입/입고 품질 관리")
     
-    with st.expander("➕ 신규 수입검사 등록", expanded=True):
+    with st.expander("➕ 신규 수입검사 등록", expanded=False):
         with st.form("iqc_form", clear_on_submit=True):
             col1, col2 = st.columns(2)
             supplier = col1.text_input("공급업체")
@@ -208,8 +205,7 @@ elif selected_menu == "📦 IQC (수입/입고 검사)":
             inspect_date = col1.date_input("검사 일자")
             judge_date = col2.date_input("합불 판정 일자")
             
-            submitted = st.form_submit_button("등록 및 시트 저장")
-            if submitted:
+            if st.form_submit_button("등록 및 시트 저장"):
                 if supplier and item_name:
                     new_id = f"IQC-2026-{len(st.session_state.IQC)+1:03d}"
                     new_data = {
@@ -223,10 +219,20 @@ elif selected_menu == "📦 IQC (수입/입고 검사)":
                     }
                     save_data("IQC", new_data)
                     st.success("IQC 항목이 성공적으로 추가되었습니다!")
+                    st.rerun()
                 else:
                     st.warning("공급업체와 품목명을 입력해주세요.")
 
-    st.subheader("📋 수입 검사 대장 (현황)")
+    st.subheader("📋 수입 검사 대장")
+    if st.session_state.IQC:
+        iqc_ids = [item["id"] for item in st.session_state.IQC]
+        del_col1, del_col2 = st.columns([3, 1])
+        selected_iqc_id = del_col1.selectbox("삭제할 IQC ID 선택", iqc_ids, key="del_iqc_select")
+        if del_col2.button("선택 IQC 삭제", type="primary"):
+            st.session_state.IQC = [item for item in st.session_state.IQC if item["id"] != selected_iqc_id]
+            st.success(f"항목 [{selected_iqc_id}]이(가) 삭제되었습니다.")
+            st.rerun()
+            
     st.dataframe(pd.DataFrame(st.session_state.IQC), use_container_width=True)
 
 elif selected_menu == "🔬 PQC (공정 품질)":
@@ -257,12 +263,21 @@ elif selected_menu == "🔬 PQC (공정 품질)":
 
     with col_log:
         st.subheader("📜 실시간 PQC 로그")
+        if st.session_state.PQC:
+            pqc_ids = [item["id"] for item in st.session_state.PQC]
+            del_col1, del_col2 = st.columns([3, 1])
+            selected_pqc_id = del_col1.selectbox("삭제할 PQC 번호(ID) 선택", pqc_ids, key="del_pqc_select")
+            if del_col2.button("선택 PQC 삭제", type="primary"):
+                st.session_state.PQC = [item for item in st.session_state.PQC if item["id"] != selected_pqc_id]
+                st.success(f"항목 [{selected_pqc_id}]이(가) 삭제되었습니다.")
+                st.rerun()
+                
         st.dataframe(pd.DataFrame(st.session_state.PQC), use_container_width=True)
 
 elif selected_menu == "🎧 고객 품질 (VOC/RMA)":
     st.title("🎧 고객 품질 관리 (VOC / RMA)")
     
-    with st.expander("➕ 신규 VOC / 고객 클레임 접수", expanded=True):
+    with st.expander("➕ 신규 VOC / 고객 클레임 접수", expanded=False):
         with st.form("voc_form", clear_on_submit=True):
             col1, col2 = st.columns(2)
             cust = col1.text_input("고객사명")
@@ -282,15 +297,26 @@ elif selected_menu == "🎧 고객 품질 (VOC/RMA)":
                     }
                     save_data("VOC", new_data)
                     st.success("VOC 클레임이 접수되었습니다!")
+                    st.rerun()
                 else:
                     st.warning("고객사명과 대상 품목을 입력해주세요.")
 
+    st.subheader("📋 VOC 클레임 대장")
+    if st.session_state.VOC:
+        voc_ids = [item["id"] for item in st.session_state.VOC]
+        del_col1, del_col2 = st.columns([3, 1])
+        selected_voc_id = del_col1.selectbox("삭제할 VOC ID 선택", voc_ids, key="del_voc_select")
+        if del_col2.button("선택 VOC 삭제", type="primary"):
+            st.session_state.VOC = [item for item in st.session_state.VOC if item["id"] != selected_voc_id]
+            st.success(f"항목 [{selected_voc_id}]이(가) 삭제되었습니다.")
+            st.rerun()
+            
     st.dataframe(pd.DataFrame(st.session_state.VOC), use_container_width=True)
 
 elif selected_menu == "🔄 CAPA (8D 개선 조치)":
     st.title("🔄 CAPA 시정 및 예방 조치 (8D Report)")
     
-    with st.expander("➕ 신규 CAPA 8D 발행", expanded=True):
+    with st.expander("➕ 신규 CAPA 8D 발행", expanded=False):
         with st.form("capa_form", clear_on_submit=True):
             col1, col2 = st.columns(2)
             title = col1.text_input("개선 조치 제목", placeholder="예: 사출 공정 버(Burr) 발생 개선")
@@ -311,10 +337,20 @@ elif selected_menu == "🔄 CAPA (8D 개선 조치)":
                     }
                     save_data("CAPA", new_data)
                     st.success("CAPA 8D 항목이 발행되었습니다!")
+                    st.rerun()
                 else:
                     st.warning("제목과 담당자를 입력해주세요.")
 
     st.subheader("📋 CAPA 8D 관리 대장")
+    if st.session_state.CAPA:
+        capa_ids = [item["id"] for item in st.session_state.CAPA]
+        del_col1, del_col2 = st.columns([3, 1])
+        selected_capa_id = del_col1.selectbox("삭제할 CAPA ID 선택", capa_ids, key="del_capa_select")
+        if del_col2.button("선택 CAPA 삭제", type="primary"):
+            st.session_state.CAPA = [item for item in st.session_state.CAPA if item["id"] != selected_capa_id]
+            st.success(f"항목 [{selected_capa_id}]이(가) 삭제되었습니다.")
+            st.rerun()
+            
     st.dataframe(pd.DataFrame(st.session_state.CAPA), use_container_width=True)
 
 elif selected_menu == "📈 SPC (통계적 공정관리)":
