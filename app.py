@@ -1,507 +1,414 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import datetime, date, timedelta
-import os
+from datetime import datetime
+import random
 
 # Page Configuration
 st.set_page_config(
-    page_title="스마트 품질관리 시스템 (QMS)",
+    page_title="스마트 종합 품질관리 시스템 (Smart QMS)",
     page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-DATA_FILE = "qms_defects_data.csv"
+# Custom CSS for Styling
+st.markdown("""
+<style>
+    .main {
+        background-color: #f8fafc;
+    }
+    .metric-card {
+        background-color: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 16px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    .stAlert {
+        border-radius: 10px;
+    }
+    .badge-pass {
+        background-color: #d1fae5;
+        color: #065f46;
+        padding: 4px 8px;
+        border-radius: 6px;
+        font-weight: bold;
+        font-size: 12px;
+    }
+    .badge-fail {
+        background-color: #fee2e2;
+        color: #991b1b;
+        padding: 4px 8px;
+        border-radius: 6px;
+        font-weight: bold;
+        font-size: 12px;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-def get_initial_sample_data():
-    today = date.today()
-    return pd.DataFrame([
+# ----------------------------------------------------
+# Session State Initialization (Data Persistence)
+# ----------------------------------------------------
+if 'iqc_list' not in st.session_state:
+    st.session_state.iqc_list = [
+        {"id": "IQC-2026-001", "supplier": "(주)한국알루미늄", "itemName": "AL6061 압출재", "qty": 5000, "coaValid": True, "status": "합격", "erpStatus": "승인"},
+        {"id": "IQC-2026-002", "supplier": "대성정밀", "itemName": "베어링 하우징", "qty": 1200, "coaValid": False, "status": "부적합", "erpStatus": "동결"},
+        {"id": "IQC-2026-003", "supplier": "글로벌칩스", "itemName": "MCU 칩셋 (IC)", "qty": 10000, "coaValid": True, "status": "검사대기", "erpStatus": "대기"}
+    ]
+
+if 'pqc_logs' not in st.session_state:
+    st.session_state.pqc_logs = [
+        {"id": 1, "time": "11:20:05", "line": "Line-2 Assembly A", "type": "중물", "val": 50.02, "pass": True},
+        {"id": 2, "time": "11:05:12", "line": "Line-1 SMT Main", "type": "초물", "val": 49.98, "pass": True},
+        {"id": 3, "time": "10:42:30", "line": "Line-2 Assembly A", "type": "중물", "val": 50.14, "pass": False}
+    ]
+
+if 'customer_claims' not in st.session_state:
+    st.session_state.customer_claims = [
+        {"id": "VOC-2026-001", "customer": "현대모빌리티", "itemName": "전동 스티어링 모듈", "lotNo": "LOT-20260729-001", "defectType": "조립 유격 미세 초과", "summary": "라인 장착 시 하우징 핏팅 이격 감지", "status": "CAPA 진행중", "capaId": "CAPA-2026-012"},
+        {"id": "VOC-2026-002", "customer": "삼성글로벌", "itemName": "배터리 케이싱 A급", "lotNo": "LOT-20260729-002", "defectType": "표면 스크래치", "summary": "운송 용기 보호 필름 박리 현상", "status": "조치 완료", "capaId": "-"},
+        {"id": "VOC-2026-003", "customer": "LG에너지", "itemName": "제어용 센서 커버", "lotNo": "LOT-20260729-003", "defectType": "신호 통신 오작동", "summary": "고객사 수신검사 중 커넥터 핀 휨 불량 접수", "status": "RMA 입고분석", "capaId": "-"}
+    ]
+
+if 'capa_list' not in st.session_state:
+    st.session_state.capa_list = [
         {
-            "관리번호": "Q2026-001",
-            "발생일자": today - timedelta(days=1),
-            "불량구분": "공정불량",
-            "품목명": "메인 PCB 어셈블리",
-            "LotNo": "LOT-260727-A1",
-            "불량현상": "납땜 불량/미납",
-            "불량수량": 24,
-            "담당부서": "SMT 공정1팀",
-            "심각도": "상",
-            "손실비용": 45,
-            "품질담당자": "김철수",
-            "진행상태": "원인분석",
-            "상세내용": "납땜 웨이브 솔더 온도 불균일로 인한 패턴 미납 발생",
-            "근본원인": "솔더링 오븐 3번 챔버 히터 출력 저하",
-            "재발방지대책": "히터 센서 교체 및 일일 온도 프로파일 전수 점검",
-            "조치담당자": "이기술",
-            "완료예정일": today + timedelta(days=2)
-        },
-        {
-            "관리번호": "Q2026-002",
-            "발생일자": today - timedelta(days=2),
-            "불량구분": "입고불량",
-            "품목명": "알루미늄 케이스 커버",
-            "LotNo": "LOT-260725-C",
-            "불량현상": "외관 스크래치/찍힘",
-            "불량수량": 120,
-            "담당부서": "협력사 (성진공업)",
-            "심각도": "중",
-            "손실비용": 30,
-            "품질담당자": "박영희",
-            "진행상태": "개선조치",
-            "상세내용": "운송 패키징 적재 과정에서 치구 상호 간섭으로 스크래치 다량 발생",
-            "근본원인": "포장 완충재 재질 부적합 및 트레이 유격",
-            "재발방지대책": "EVA 폼 전용 트레이 변경 및 포장 사양서 개정",
-            "조치담당자": "박영희",
-            "완료예정일": today + timedelta(days=1)
-        },
-        {
-            "관리번호": "Q2026-003",
-            "발생일자": today - timedelta(days=4),
-            "불량구분": "고객불량",
-            "품목명": "전원 공급 모듈 500W",
-            "LotNo": "LOT-260720-P",
-            "불량현상": "전원 작동 불량",
-            "불량수량": 5,
-            "담당부서": "품질보증팀",
-            "심각도": "상",
-            "손실비용": 150,
-            "품질담당자": "정민우",
-            "진행상태": "효과검증",
-            "상세내용": "고객사 라인 투입 중 초기 전원 On 시 FET 소자 파손 보고",
-            "근본원인": "서지 압력 방지 다이오드 스펙 오적용",
-            "재발방지대책": "부품 스펙 변경 승인 및 반품품 전수 재작업 진행",
-            "조치담당자": "정민우",
-            "완료예정일": today - timedelta(days=1)
-        },
-        {
-            "관리번호": "Q2026-004",
-            "발생일자": today - timedelta(days=6),
-            "불량구분": "공정불량",
-            "품목명": "커넥터 하우징",
-            "LotNo": "LOT-260721-H",
-            "불량현상": "치수 오차 초과",
-            "불량수량": 85,
-            "담당부서": "사출 3팀",
-            "심각도": "중",
-            "손실비용": 18,
-            "품질담당자": "김철수",
-            "진행상태": "조치완료",
-            "상세내용": "금형 수축률 계산 오류로 내경 치수 +0.12mm 초과",
-            "근본원인": "금형 냉각수 유량 감소로 성형 온도 상승",
-            "재발방지대책": "금형 세척 및 냉각 라인 밸브 교체 완료",
-            "조치담당자": "최설비",
-            "완료예정일": today - timedelta(days=2)
-        },
-        {
-            "관리번호": "Q2026-005",
-            "발생일자": today - timedelta(days=8),
-            "불량구분": "입고불량",
-            "품목명": "칩 저항 10k ohm",
-            "LotNo": "LOT-260718-R",
-            "불량현상": "부품 누락/오실장",
-            "불량수량": 500,
-            "담당부서": "협력사 (전산전자)",
-            "심각도": "하",
-            "손실비용": 10,
-            "품질담당자": "박영희",
-            "진행상태": "대책수립",
-            "상세내용": "릴 포장 라벨 표시 값과 실제 부품 저항값 상이",
-            "근본원인": "공급사 출하 검사 시 라벨링 바코드 혼용",
-            "재발방지대책": "공급사 수입검사 강화 및 수입검사 샘플링 수율 증대",
-            "조치담당자": "박영희",
-            "완료예정일": today + timedelta(days=3)
-        },
-        {
-            "관리번호": "Q2026-006",
-            "발생일자": today,
-            "불량구분": "공정불량",
-            "품목명": "스마트 센서 모듈",
-            "LotNo": "LOT-260728-S",
-            "불량현상": "전원 작동 불량",
-            "불량수량": 12,
-            "담당부서": "조립 2팀",
-            "심각도": "상",
-            "손실비용": 60,
-            "품질담당자": "강동원",
-            "진행상태": "접수",
-            "상세내용": "최종 핑거 테스트 중 통신 응답 없음 현상 발생",
-            "근본원인": "",
-            "재발방지대책": "",
-            "조치담당자": "강동원",
-            "완료예정일": today + timedelta(days=5)
+            "id": "CAPA-2026-012",
+            "title": "Line-2 모터 하우징 치수 이탈 건",
+            "status": "조치 중",
+            "description": "생산 공정 중 CNC 가공 치수가 LSL 미만으로 이탈하는 현상 지속 발생",
+            "rootCause": "1차 원인: 바이트 금형 마모 -> 2차 원인: 절삭유 온도 상승 -> 근본원인: 교체 주기 미준수",
+            "assignee": "이보람 과장 (생산기술)",
+            "createdDate": "2026-07-28",
+            "dueDate": "2026-08-04"
         }
-    ])
+    ]
 
-def load_data():
-    if "defects_df" in st.session_state:
-        return st.session_state["defects_df"]
-    
-    if os.path.exists(DATA_FILE):
-        try:
-            df = pd.read_csv(DATA_FILE)
-            df['발생일자'] = pd.to_datetime(df['발생일자']).dt.date
-            if '완료예정일' in df.columns:
-                df['완료예정일'] = pd.to_datetime(df['완료예정일']).dt.date
-            st.session_state["defects_df"] = df
-            return df
-        except Exception as e:
-            st.error(f"데이터 파일 로드 중 오류 발생: {e}")
+if 'ai_logs' not in st.session_state:
+    st.session_state.ai_logs = [
+        {"id": 1, "time": "15:28:10", "line": "Line-2 Assembly A", "item": "모터 하우징", "anomalyType": "외경 치수 상한선(USL) 표류", "cause": "바이트 마모 및 절삭유 온도 상승", "causeRatio": 64, "risk": "고위험"},
+        {"id": 2, "time": "14:10:05", "line": "Line-1 SMT Main", "item": "PCB 메인모듈", "anomalyType": "납땜 가공 영역 미세 브릿지", "cause": "리플로우 솔더링 노즐 오염", "causeRatio": 48, "risk": "주의"},
+        {"id": 3, "time": "11:45:22", "line": "Line-3 Packaging", "item": "전동 모듈 완제품", "anomalyType": "외관 케이싱 유격 미세 감지", "cause": "조립 治具(Jig) 체결 톨러런스 변화", "causeRatio": 35, "risk": "주의"}
+    ]
 
-    df = get_initial_sample_data()
-    st.session_state["defects_df"] = df
-    save_data(df)
-    return df
+# ----------------------------------------------------
+# Sidebar Navigation
+# ----------------------------------------------------
+with st.sidebar:
+    st.image("https://img.icons8.com/color/96/shield--v1.png", width=50)
+    st.title("SMART QMS")
+    st.caption("Enterprise v5.0 | ERP/MES Live")
+    st.divider()
 
-def save_data(df):
-    st.session_state["defects_df"] = df
-    try:
-        df.to_csv(DATA_FILE, index=False, encoding="utf-8-sig")
-    except Exception as e:
-        st.warning(f"로컬 파일 저장 실패 (세션 데이터는 유지됩니다): {e}")
-
-def render_sidebar(df):
-    st.sidebar.image("https://img.icons8.com/color/96/shield.png", width=60)
-    st.sidebar.title("스마트 품질관리 System")
-    st.sidebar.caption("Quality Management System")
-    st.sidebar.markdown("---")
-
-    # Main Navigation Menu
-    menu = st.sidebar.radio(
-        "📌 메인 메뉴",
-        ["종합 대시보드", "불량 등록 및 대장", "개선 진행상황 (CAPA)"],
-        index=0
+    selected_menu = st.radio(
+        "품질 모듈 메뉴",
+        [
+            "📊 통합 대시보드",
+            "📦 IQC (수입/입고 검사)",
+            "🔬 PQC (공정 품질)",
+            "🎧 고객 품질 (VOC/RMA)",
+            "📈 SPC (통계적 공정관리)",
+            "🔄 CAPA (8D 개선 조치)",
+            "🧠 AI 품질 진단 & 분석",
+            "🔍 종합 이력 추적성"
+        ]
     )
-    
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("🔍 통합 조건 필터")
 
-    # Date Range Filter
-    today = date.today()
-    default_start = today - timedelta(days=30)
-    
-    # Preset date buttons
-    col_preset1, col_preset2 = st.sidebar.columns(2)
-    with col_preset1:
-        if st.button("📅 이번달", use_container_width=True):
-            st.session_state['start_date_val'] = date(today.year, today.month, 1)
-            st.session_state['end_date_val'] = today
-    with col_preset2:
-        if st.button("📅 전체기간", use_container_width=True):
-            st.session_state['start_date_val'] = date(2025, 1, 1)
-            st.session_state['end_date_val'] = today + timedelta(days=365)
+    st.divider()
+    st.success("🟢 MES / ERP 연동 정상")
+    st.info("👤 담당자: 김품질 팀장")
 
-    start_date_default = st.session_state.get('start_date_val', default_start)
-    end_date_default = st.session_state.get('end_date_val', today)
 
-    start_date = st.sidebar.date_input("시작일자", start_date_default)
-    end_date = st.sidebar.date_input("종료일자", end_date_default)
+# ====================================================
+# 1. 통합 대시보드
+# ====================================================
+if selected_menu == "📊 통합 대시보드":
+    st.title("📊 통합 품질 모니터링 대시보드")
+    st.caption("실시간 KPI 현황 및 라인별 종합 품질 분석")
 
-    # Defect Type Filter
-    defect_types = ["전체", "입고불량", "공정불량", "고객불량"]
-    selected_type = st.sidebar.selectbox("불량 구분 선택", defect_types, index=0)
+    # KPI Top Row
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric(label="공정 불량률 (PPM)", value="342 PPM", delta="-12.4% (전월 대비)")
+    with col2:
+        st.metric(label="IQC 수입검사 합격률", value="98.2 %", delta="목표치 98.0% 달성")
+    with col3:
+        st.metric(label="고객 품질 클레임", value=f"{len(st.session_state.customer_claims)} 건", delta="CAPA 진행중")
+    with col4:
+        st.metric(label="CAPA 적기 조치율", value="96.5 %", delta="+2.1% (전주 대비)")
 
-    # Apply Filters
-    filtered_df = df.copy()
-    if start_date and end_date:
-        filtered_df = filtered_df[(filtered_df['발생일자'] >= start_date) & (filtered_df['발생일자'] <= end_date)]
-    if selected_type != "전체":
-        filtered_df = filtered_df[filtered_df['불량구분'] == selected_type]
+    st.divider()
 
-    st.sidebar.markdown("---")
-    # Quick Badges Stats
-    st.sidebar.caption("📊 유형별 누적 건수")
-    st.sidebar.text(f"• 입고불량 (IQC): {len(df[df['불량구분']=='입고불량'])} 건")
-    st.sidebar.text(f"• 공정불량 (IPQC): {len(df[df['불량구분']=='공정불량'])} 건")
-    st.sidebar.text(f"• 고객불량 (CQA): {len(df[df['불량구분']=='고객불량'])} 건")
+    # Chart & Alerts
+    left_col, right_col = st.columns([2, 1])
 
-    if st.sidebar.button("🔄 샘플 데이터 초기화", help="초기 데이터로 복원합니다."):
-        df = get_initial_sample_data()
-        save_data(df)
-        st.sidebar.success("데이터가 초기화되었습니다.")
-        st.rerun()
+    with left_col:
+        st.subheader("📈 월별 품질 PPM 추이 분석")
+        months = ['2월', '3월', '4월', '5월', '6월', '7월']
+        ppm_values = [680, 590, 520, 480, 390, 342]
+        target_ppm = [500] * 6
 
-    return menu, filtered_df
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=months, y=ppm_values, mode='lines+markers', name='실제 PPM', line=dict(color='#4f46e5', width=3)))
+        fig.add_trace(go.Scatter(x=months, y=target_ppm, mode='lines', name='목표선 (500 PPM)', line=dict(color='#ef4444', dash='dash')))
+        fig.update_layout(height=320, margin=dict(l=20, r=20, t=30, b=20))
+        st.plotly_chart(fig, use_container_width=True)
 
-def render_dashboard(df):
-    st.title("📊 품질 종합 대시보드")
-    st.caption("선택된 기간 및 불량 유형 조건에 따른 주요 품질 지표 및 진행 현황입니다.")
+    with right_col:
+        st.subheader("⚠️ 실시간 라인 이상 감지")
+        st.error("🚨 **Line-2 Assembly A**: 외경 치수 50.14mm (USL 50.10mm 초과)")
+        st.warning("⚠️ **Line-1 SMT Main**: 납땜 가공 영역 솔더 불량 2건 연속 발생")
+        
+        if st.button("🚨 해당건 즉시 CAPA 8D 발행"):
+            st.toast("CAPA 프로세스가 성공적으로 생성되었습니다!", icon="✅")
 
-    # KPI Metrics
-    total_count = len(df)
-    total_qty = df['불량수량'].sum() if total_count > 0 else 0
-    closed_count = len(df[df['진행상태'] == '조치완료'])
-    in_progress_count = total_count - closed_count
-    completion_rate = round((closed_count / total_count * 100), 1) if total_count > 0 else 0.0
-    total_cost = df['손실비용'].sum() if total_count > 0 else 0
+    # Process Status Table
+    st.subheader("📋 검사 구획별 품질 종합 현황")
+    summary_df = pd.DataFrame([
+        {"검사 구획": "IQC (원자재 수입검사)", "총 검사 수량": f"{len(st.session_state.iqc_list)} 건", "합격": "2 건", "부적합": "1 건", "합격률": "97.8%", "상태": "정상"},
+        {"검사 구획": "PQC (생산 공정품질)", "총 검사 수량": f"{len(st.session_state.pqc_logs)} 건", "합격": "2 건", "부적합": "1 건", "합격률": "97.6%", "상태": "주의 (Line-2)"},
+        {"검사 구획": "고객 품질 (VOC / RMA)", "총 검사 수량": f"{len(st.session_state.customer_claims)} 건", "합격": "1 건", "부적합": "2 건", "합격률": "80.0%", "상태": "정상 접수"}
+    ])
+    st.dataframe(summary_df, use_container_width=True)
 
-    kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
-    kpi1.metric("전체 불량 건수", f"{total_count:,} 건")
-    kpi2.metric("총 불량 수량", f"{total_qty:,} EA")
-    kpi3.metric("개선 완료율", f"{completion_rate}%", delta=f"{closed_count}건 완료")
-    kpi4.metric("조치 진행 중", f"{in_progress_count:,} 건")
-    kpi5.metric("추정 손실 금액", f"{total_cost:,} 만원")
 
-    st.markdown("---")
+# ====================================================
+# 2. IQC (수입/입고 검사)
+# ====================================================
+elif selected_menu == "📦 IQC (수입/입고 검사)":
+    st.title("📦 IQC 수입/입고 품질 관리")
+    st.caption("MIL-STD-105E 샘플링 수량 자동 계산 및 원자재 검사 대장")
 
-    # Charts Row 1
-    col_chart1, col_chart2 = st.columns([2, 1])
+    col_calc, col_list = st.columns([1, 2])
 
-    with col_chart1:
-        st.subheader("📈 일자별 불량 발생 추이")
-        if not df.empty:
-            daily_df = df.groupby('발생일자').size().reset_index(name='건수')
-            daily_df['발생일자'] = pd.to_datetime(daily_df['발생일자'])
-            fig_daily = px.line(
-                daily_df, x='발생일자', y='건수',
-                markers=True, text='건수',
-                title="일자별 발생 건수",
-                color_discrete_sequence=['#2563eb']
-            )
-            fig_daily.update_traces(textposition="top center")
-            fig_daily.update_layout(margin=dict(l=20, r=20, t=40, b=20), height=320)
-            st.plotly_chart(fig_daily, use_container_width=True)
+    with col_calc:
+        st.subheader("🧮 MIL-STD-105E 샘플링 계산기")
+        lot_size = st.number_input("입고 로트 크기 (Lot Size)", value=5000, step=100)
+        aql = st.selectbox("합격품질수준 (AQL)", ["AQL 0.65 (중결함)", "AQL 1.0 (보통검사)", "AQL 2.5 (경결함)"])
+        
+        if lot_size > 3000:
+            sample_n, ac, re = 200, 5, 6
+        elif lot_size > 1000:
+            sample_n, ac, re = 125, 3, 4
         else:
-            st.info("조회 조건에 맞는 데이터가 없습니다.")
+            sample_n, ac, re = 80, 2, 3
 
-    with col_chart2:
-        st.subheader("🍩 불량 유형별 비중")
-        if not df.empty:
-            type_df = df.groupby('불량구분').size().reset_index(name='건수')
-            fig_type = px.pie(
-                type_df, values='건수', names='불량구분',
-                hole=0.5,
-                color='불량구분',
-                color_discrete_map={'입고불량':'#10b981', '공정불량':'#f59e0b', '고객불량':'#f43f5e'}
-            )
-            fig_type.update_layout(margin=dict(l=20, r=20, t=40, b=20), height=320)
-            st.plotly_chart(fig_type, use_container_width=True)
-        else:
-            st.info("데이터가 없습니다.")
+        st.info(f"""
+        **추천 검사 시편 수**: `{sample_n} EA`  
+        **판정 기준**: 합격(Ac) `{ac}` 이하 | 불합격(Re) `{re}` 이상
+        """)
 
-    # Charts Row 2
-    col_chart3, col_chart4 = st.columns([1, 2])
-
-    with col_chart3:
-        st.subheader("📊 CAPA 진행 단계별 현황")
-        stages = ['접수', '원인분석', '대책수립', '개선조치', '효과검증', '조치완료']
-        stage_counts = [len(df[df['진행상태'] == s]) for s in stages]
-        stage_df = pd.DataFrame({'단계': stages, '건수': stage_counts})
-
-        fig_stage = px.bar(
-            stage_df, x='단계', y='건수', text='건수',
-            color='단계',
-            color_discrete_sequence=['#64748b', '#6366f1', '#3b82f6', '#f59e0b', '#a855f7', '#10b981']
-        )
-        fig_stage.update_traces(textposition='outside')
-        fig_stage.update_layout(showlegend=False, margin=dict(l=10, r=10, t=30, b=10), height=300)
-        st.plotly_chart(fig_stage, use_container_width=True)
-
-    with col_chart4:
-        st.subheader("⚠️ 주요 불량 현상 TOP 5")
-        if not df.empty:
-            cause_df = df['불량현상'].value_counts().head(5).reset_index()
-            cause_df.columns = ['불량현상', '건수']
-            fig_cause = px.bar(
-                cause_df, y='불량현상', x='건수', text='건수',
-                orientation='h',
-                color_discrete_sequence=['#1e293b']
-            )
-            fig_cause.update_traces(textposition='outside')
-            fig_cause.update_layout(yaxis=dict(autorange="reversed"), margin=dict(l=10, r=10, t=30, b=10), height=300)
-            st.plotly_chart(fig_cause, use_container_width=True)
-
-    # Recent Unresolved Items Table
-    st.markdown("---")
-    st.subheader("🚨 주요 미완료 개선 필요 항목")
-    unresolved_df = df[df['진행상태'] != '조치완료']
-    if not unresolved_df.empty:
-        st.dataframe(
-            unresolved_df[['관리번호', '발생일자', '불량구분', '품목명', '불량현상', '불량수량', '심각도', '진행상태', '품질담당자']],
-            use_container_width=True,
-            hide_index=True
-        )
-    else:
-        st.success("🎉 현재 미완료된 불량 항목이 없습니다!")
-
-def render_defect_list(df, full_df):
-    st.title("📝 불량 등록 및 대장")
-    st.caption("신규 불량을 등록하거나 기존 등록 내역을 조회/수정/삭제합니다.")
-
-    # Expander for Defect Registration Form
-    with st.expander("➕ 신규 불량 등록 Form 열기", expanded=False):
-        with st.form("add_defect_form"):
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                f_date = st.date_input("발생일자 *", date.today())
-                f_type = st.selectbox("불량구분 *", ["공정불량", "입고불량", "고객불량"])
-                f_item = st.text_input("품목명 *", placeholder="예: 메인 PCB 어셈블리")
-            with c2:
-                f_lot = st.text_input("Lot 번호", placeholder="예: LOT-20260728-01")
-                f_phenomenon = st.selectbox("불량현상 *", [
-                    "납땜 불량/미납", "치수 오차 초과", "외관 스크래치/찍힘",
-                    "전원 작동 불량", "부품 누락/오실장", "기타 품질 문제"
-                ])
-                f_qty = st.number_input("불량수량 (EA) *", min_value=1, value=1)
-            with c3:
-                f_dept = st.text_input("담당/원인 부서", placeholder="예: SMT 1팀 / A부품사")
-                f_severity = st.selectbox("심각도", ["상", "중", "하"], index=1)
-                f_cost = st.number_input("추정 손실비용 (만원)", min_value=0, value=10)
-
-            c4, c5 = st.columns(2)
-            with c4:
-                f_owner = st.text_input("품질 담당자", value="김품질")
-            with c5:
-                f_desc = st.text_area("상세 불량 내용", placeholder="발생 경위 및 초기 관찰 상태", height=68)
-
-            submit_btn = st.form_submit_button("💾 불량 신규 등록하기", use_container_width=True)
-
-            if submit_btn:
-                if not f_item:
-                    st.error("품목명을 입력해 주세요.")
-                else:
-                    new_id = f"Q{date.today().year}-{len(full_df)+1:03d}"
-                    new_row = {
-                        "관리번호": new_id,
-                        "발생일자": f_date,
-                        "불량구분": f_type,
-                        "품목명": f_item,
-                        "LotNo": f_lot,
-                        "불량현상": f_phenomenon,
-                        "불량수량": f_qty,
-                        "담당부서": f_dept,
-                        "심각도": f_severity,
-                        "손실비용": f_cost,
-                        "품질담당자": f_owner,
-                        "진행상태": "접수",
-                        "상세내용": f_desc,
-                        "근본원인": "",
-                        "재발방지대책": "",
-                        "조치담당자": f_owner,
-                        "완료예정일": f_date + timedelta(days=7)
-                    }
-                    updated_df = pd.concat([pd.DataFrame([new_row]), full_df], ignore_index=True)
-                    save_data(updated_df)
-                    st.success(f"신규 불량건[{new_id}]이 성공적으로 등록되었습니다!")
+    with col_list:
+        st.subheader("📋 수입 검사 대장 및 ERP 연동")
+        
+        # Add new item modal/expander
+        with st.expander("➕ 신규 수입검사 등록"):
+            with st.form("iqc_form"):
+                supplier = st.text_input("공급업체")
+                item_name = st.text_input("품목명")
+                qty = st.number_input("입고수량", value=1000)
+                coa_valid = st.checkbox("CoA 성적서 검증 완료", value=True)
+                status = st.selectbox("판정", ["합격", "부적합", "검사대기"])
+                
+                if st.form_submit_button("등록 저장"):
+                    new_id = f"IQC-2026-00{len(st.session_state.iqc_list)+1}"
+                    st.session_state.iqc_list.append({
+                        "id": new_id, "supplier": supplier, "itemName": item_name,
+                        "qty": qty, "coaValid": coa_valid, "status": status, "erpStatus": "승인" if status == "합격" else "동결"
+                    })
+                    st.success("신규 IQC 항목이 추가되었습니다.")
                     st.rerun()
 
-    st.markdown("---")
+        df_iqc = pd.DataFrame(st.session_state.iqc_list)
+        st.dataframe(df_iqc, use_container_width=True)
 
-    # Search & Filter
-    search_term = st.text_input("🔎 대장 검색 (품목명, 관리번호, 불량현상, 담당자 키워드 검색)", "")
-    
-    display_df = df.copy()
-    if search_term:
-        mask = (
-            display_df['품목명'].str.contains(search_term, case=False, na=False) |
-            display_df['관리번호'].str.contains(search_term, case=False, na=False) |
-            display_df['불량현상'].str.contains(search_term, case=False, na=False) |
-            display_df['품질담당자'].str.contains(search_term, case=False, na=False)
-        )
-        display_df = display_df[mask]
 
-    st.subheader(f"📋 불량 발생 대장 (총 {len(display_df)} 건)")
-    st.dataframe(
-        display_df[['관리번호', '발생일자', '불량구분', '품목명', 'LotNo', '불량현상', '불량수량', '담당부서', '심각도', '손실비용', '진행상태', '품질담당자']],
-        use_container_width=True,
-        hide_index=True
-    )
+# ====================================================
+# 3. PQC (공정 품질)
+# ====================================================
+elif selected_menu == "🔬 PQC (공정 품질)":
+    st.title("🔬 PQC 공정 품질 관리")
+    st.caption("IoT 디지매틱 계측 데이터 실시간 수집 및 공정 초/중/종물 검사")
 
-    # Export & Row Delete
-    col_dl, col_del = st.columns([3, 1])
-    with col_dl:
-        csv_data = display_df.to_csv(index=False, encoding='utf-8-sig')
-        st.download_button(
-            label="📥 현재 목록 CSV 다운로드",
-            data=csv_data,
-            file_name=f"QMS_Defect_List_{date.today()}.csv",
-            mime="text/csv"
-        )
-    with col_del:
-        delete_id = st.selectbox("삭제할 관리번호", ["선택"] + list(full_df['관리번호']))
-        if st.button("🗑️ 항목 삭제", type="secondary"):
-            if delete_id != "선택":
-                updated_df = full_df[full_df['관리번호'] != delete_id]
-                save_data(updated_df)
-                st.success(f"항목 {delete_id} 삭제 완료.")
+    col_iot, col_log = st.columns([1, 2])
+
+    with col_iot:
+        st.subheader("📡 Bluetooth IoT 측정 연동")
+        line = st.selectbox("생산 라인", ["Line-1 (SMT Main)", "Line-2 (Assembly A)", "Line-3 (Packaging)"])
+        test_type = st.radio("검사 구분", ["초물 검사", "중물 자주검사", "종물 검사"], horizontal=True)
+        
+        if st.button("🔌 IoT 측정 값 가져오기"):
+            st.session_state.iot_val = round(random.uniform(49.92, 50.15), 2)
+            st.toast(f"IoT 데이터 수신 완료: {st.session_state.iot_val} mm")
+
+        meas_val = st.number_input("측정 치수 (mm) [규격: 50.00 ± 0.10]", value=st.session_state.get('iot_val', 50.00), format="%.2f")
+
+        if st.button("저장 및 자동 판정"):
+            is_pass = 49.90 <= meas_val <= 50.10
+            now_str = datetime.now().strftime("%H:%M:%S")
+            st.session_state.pqc_logs.insert(0, {
+                "id": len(st.session_state.pqc_logs) + 1,
+                "time": now_str,
+                "line": line,
+                "type": test_type,
+                "val": meas_val,
+                "pass": is_pass
+            })
+            if is_pass:
+                st.success("✅ 규격 내 합격 (OK)")
+            else:
+                st.error("🚨 OOS 규격 이탈 (NG)")
+            st.rerun()
+
+    with col_log:
+        st.subheader("📜 실시간 PQC 검사 이력 로그")
+        df_pqc = pd.DataFrame(st.session_state.pqc_logs)
+        st.dataframe(df_pqc, use_container_width=True)
+
+
+# ====================================================
+# 4. 고객 품질 (VOC / RMA)
+# ====================================================
+elif selected_menu == "🎧 고객 품질 (VOC/RMA)":
+    st.title("🎧 고객 품질 관리 (VOC / RMA)")
+    st.caption("고객 불만 접수, 반품 분석 및 CAPA 연계 관리")
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("당월 접수 VOC", f"{len(st.session_state.customer_claims)} 건")
+    col2.metric("RMA 반품 입고/분석", "1 건 (진행중)")
+    col3.metric("고객 만족도 점수", "94.5 / 100점")
+
+    st.divider()
+
+    with st.expander("➕ 신규 VOC / 고객 클레임 접수"):
+        with st.form("voc_form"):
+            cust = st.text_input("고객사명")
+            item = st.text_input("대상 품목")
+            lot = st.text_input("Lot No.")
+            defect = st.text_input("불량 유형")
+            summary = st.text_area("불량 요약")
+            
+            if st.form_submit_button("클레임 접수"):
+                st.session_state.customer_claims.append({
+                    "id": f"VOC-2026-00{len(st.session_state.customer_claims)+1}",
+                    "customer": cust, "itemName": item, "lotNo": lot,
+                    "defectType": defect, "summary": summary, "status": "접수 완료", "capaId": "-"
+                })
+                st.success("VOC 접수 등록 완료")
                 st.rerun()
 
-def render_improvement_capa(df, full_df):
-    st.title("🔄 개선 진행상황 (CAPA / Kanban)")
-    st.caption("원인분석부터 조치완료까지 품질 개선활동을 단계별로 업데이트합니다.")
+    df_claims = pd.DataFrame(st.session_state.customer_claims)
+    st.dataframe(df_claims, use_container_width=True)
 
-    stages = ['접수', '원인분석', '대책수립', '개선조치', '효과검증', '조치완료']
 
-    # Kanban Summary Columns
-    cols = st.columns(6)
-    for idx, stage in enumerate(stages):
-        count = len(df[df['진행상태'] == stage])
-        cols[idx].metric(f"{idx+1}. {stage}", f"{count} 건")
+# ====================================================
+# 5. SPC (통계적 공정관리)
+# ====================================================
+elif selected_menu == "📈 SPC (통계적 공정관리)":
+    st.title("📈 SPC 통계적 공정 관리")
+    st.caption("X-bar R 관리도 및 Cp/Cpk 공정능력지수 실시간 측정")
 
-    st.markdown("---")
+    col_cpk, col_chart = st.columns([1, 2])
 
-    # Item Selector for CAPA Detail Update
-    st.subheader("✍️ 불량건별 CAPA 상세 조치 및 단계 업데이트")
-    
-    selected_id = st.selectbox(
-        "개선 관리할 불량 관리번호를 선택하세요",
-        options=full_df['관리번호'] + " | " + full_df['품목명'] + " (" + full_df['진행상태'] + ")"
-    )
+    with col_cpk:
+        st.subheader("📐 공정능력지수 (Process Capability)")
+        st.metric(label="Cp (치수 산포)", value="1.48", delta="우수 (≥1.33)")
+        st.metric(label="Cpk (편향 반영)", value="1.35", delta="적합 (≥1.33)")
+        
+        st.warning("⚠️ **Nelson Rules 알림**: Rule 2 감지 - 연속 9개 데이터가 중심선(CL) 한쪽에 위치하여 편향 징후 발생")
 
-    if selected_id:
-        target_id = selected_id.split(" | ")[0]
-        row = full_df[full_df['관리번호'] == target_id].iloc[0]
+    with col_chart:
+        st.subheader("📉 X-bar R 관리도")
+        sample_no = [f"#{i}" for i in range(1, 11)]
+        measurements = [50.01, 50.03, 49.98, 50.02, 50.05, 50.04, 50.06, 50.02, 49.99, 50.01]
 
+        fig_spc = go.Figure()
+        fig_spc.add_trace(go.Scatter(x=sample_no, y=measurements, mode='lines+markers', name='측정치 (mm)', line=dict(color='#06b6d4', width=2)))
+        fig_spc.add_trace(go.Scatter(x=sample_no, y=[50.10]*10, mode='lines', name='UCL (50.10)', line=dict(color='#ef4444', dash='dash')))
+        fig_spc.add_trace(go.Scatter(x=sample_no, y=[50.00]*10, mode='lines', name='CL (50.00)', line=dict(color='#10b981')))
+        fig_spc.add_trace(go.Scatter(x=sample_no, y=[49.90]*10, mode='lines', name='LSL (49.90)', line=dict(color='#ef4444', dash='dash')))
+        fig_spc.update_layout(height=350, margin=dict(l=20, r=20, t=30, b=20))
+        st.plotly_chart(fig_spc, use_container_width=True)
+
+
+# ====================================================
+# 6. CAPA (8D 개선 조치)
+# ====================================================
+elif selected_menu == "🔄 CAPA (8D 개선 조치)":
+    st.title("🔄 CAPA 시정 및 예방 조치 (8D Report)")
+    st.caption("근본 원인 분석(5-Why) 및 시정/예방 조치 유효성 검증")
+
+    if st.button("➕ 신규 CAPA 8D 발행"):
+        st.session_state.capa_list.append({
+            "id": f"CAPA-2026-01{len(st.session_state.capa_list)+3}",
+            "title": "Line-1 SMT 납땜 미세 브릿지 개선건",
+            "status": "조치 중",
+            "description": "리플로우 솔더링 후 잔여 플럭스 오염으로 인한 미세 쇼트 발생",
+            "rootCause": "노즐 세척 주기 지연 및 노후화",
+            "assignee": "김기술 과장",
+            "createdDate": datetime.now().strftime("%Y-%m-%d"),
+            "dueDate": "2026-08-10"
+        })
+        st.success("신규 CAPA 발행 완료")
+        st.rerun()
+
+    for capa in st.session_state.capa_list:
         with st.container():
-            st.info(f"**[선택 항목]** 관리번호: **{row['관리번호']}** | 품목: **{row['품목명']}** | 불량현상: **{row['불량현상']}** ({row['불량수량']} EA)")
+            st.markdown(f"### 📌 [{capa['id']}] {capa['title']} (`{capa['status']}`)")
+            st.write(f"**담당자:** {capa['assignee']} | **완료 예정일:** {capa['dueDate']}")
+            st.info(f"**문제 요약:** {capa['description']}\n\n**근본 원인 (Root Cause):** {capa['rootCause']}")
+            st.divider()
 
-            with st.form("update_capa_form"):
-                u_col1, u_col2 = st.columns(2)
-                with u_col1:
-                    curr_stage_idx = stages.index(row['진행상태']) if row['진행상태'] in stages else 0
-                    u_status = st.selectbox("진행 단계 변경", stages, index=curr_stage_idx)
-                    u_assignee = st.text_input("조치 담당자", value=str(row['조치담당자']) if pd.notnull(row['조치담당자']) else str(row['품질담당자']))
-                with u_col2:
-                    default_target_date = row['완료예정일'] if pd.notnull(row['완료예정일']) and isinstance(row['완료예정일'], date) else date.today()
-                    u_target_date = st.date_input("완료 (예정) 일자", default_target_date)
 
-                u_cause = st.text_area("근본 원인 분석 (Root Cause)", value=str(row['근본원인']) if pd.notnull(row['근본원인']) else "", placeholder="문제의 근본 원인을 입력하세요 (예: 히터 온도 차이, 작업 오류 등)")
-                u_action = st.text_area("재발방지 대책 및 개선조치 사항", value=str(row['재발방지대책']) if pd.notnull(row['재발방지대책']) else "", placeholder="실행된 재발방지 대책을 적어주세요")
+# ====================================================
+# 7. AI 품질 진단 & 분석
+# ====================================================
+elif selected_menu == "🧠 AI 품질 진단 & 분석":
+    st.title("🧠 AI 실시간 불량 예지 및 근본 원인(Root Cause) 진단")
+    st.caption("XGBoost 및 SHAP 변수 기여도 분석 기반 AI 이상징후 탐지")
 
-                update_btn = st.form_submit_button("💾 CAPA 개선 이력 저장 및 업데이트", use_container_width=True)
+    if st.button("✨ AI 이상징후 심층 진단 실행"):
+        with st.spinner("AI 엔진이 센서 데이터 및 비전 영상 요인을 분석 중입니다..."):
+            import time
+            time.sleep(1)
+            st.success("진단 완료: 위험지수 84.2% 감지됨")
 
-                if update_btn:
-                    idx = full_df[full_df['관리번호'] == target_id].index[0]
-                    full_df.at[idx, '진행상태'] = u_status
-                    full_df.at[idx, '근본원인'] = u_cause
-                    full_df.at[idx, '재발방지대책'] = u_action
-                    full_df.at[idx, '조치담당자'] = u_assignee
-                    full_df.at[idx, '완료예정일'] = u_target_date
+    col_chart, col_vision = st.columns([2, 1])
 
-                    save_data(full_df)
-                    st.success(f"관리번호 {target_id}의 CAPA 정보가 업데이트되었습니다!")
-                    st.rerun()
+    with col_chart:
+        st.subheader("📊 AI 원인 인자별 기여도 (SHAP Value)")
+        factors = ['CNC 바이트 마모', '절삭유 온도변화', '공구 진동', '원자재 경도 차이', '작업자 교대 이격']
+        scores = [64, 22, 18, 12, 5]
 
-    # Detailed CAPA Status Table
-    st.markdown("---")
-    st.subheader("📖 전사 CAPA 개선활동 현황표")
-    st.dataframe(
-        df[['관리번호', '발생일자', '불량구분', '품목명', '불량현상', '진행상태', '근본원인', '재발방지대책', '조치담당자', '완료예정일']],
-        use_container_width=True,
-        hide_index=True
-    )
+        fig_ai = px.bar(x=scores, y=factors, orientation='h', labels={'x': '기여도 (%)', 'y': '공정 인자'},
+                        color=scores, color_continuous_scale='Reds')
+        fig_ai.update_layout(height=300, showlegend=False)
+        st.plotly_chart(fig_ai, use_container_width=True)
 
-def main():
-    df = load_data()
-    menu, filtered_df = render_sidebar(df)
+    with col_vision:
+        st.subheader("📷 AI 비전 검사 이미지 분석")
+        st.image("https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=500&auto=format&fit=crop&q=60", caption="Line-2 모터 하우징 AI 스캔 - Defect 94% 감지")
 
-    if menu == "종합 대시보드":
-        render_dashboard(filtered_df)
-    elif menu == "불량 등록 및 대장":
-        render_defect_list(filtered_df, df)
-    elif menu == "개선 진행상황 (CAPA)":
-        render_improvement_capa(filtered_df, df)
+    st.subheader("📋 AI 진단 로그")
+    st.dataframe(pd.DataFrame(st.session_state.ai_logs), use_container_width=True)
 
-if __name__ == "__main__":
-    main()
+
+# ====================================================
+# 8. 종합 이력 추적성 (Traceability)
+# ====================================================
+elif selected_menu == "🔍 종합 이력 추적성":
+    st.title("🔍 종합 이력 추적성 (Traceability)")
+    st.caption("원자재 Lot부터 공정 검사, 출하 완제품 및 VOC 이력 단 10초 추적")
+
+    search_lot = st.text_input("추적할 완제품 Lot No. 또는 Serial 번호 입력", value="LOT-20260729-001")
+
+    if search_lot:
+        st.subheader(f"🚩 추적 결과: `{search_lot}`")
+
+        with st.status("종합 이력 추적 완료", expanded=True):
+            st.write("📦 **1단계 [원자재 IQC]**: AL6061 압출재 (Lot: MAT-2026-088) | 공급사: (주)한국알루미늄 | **합격**")
+            st.write("⚙️ **2단계 [생산 PQC]**: Line-2 Assembly A 모터 하우징 가공 | 측정치: 50.02mm (정상) | 작업자: 박기술 선임")
+            st.write("🚚 **3단계 [고객 VOC/출하]**: 현대모빌리티 인천공장 납품 | 성적서: COA-2026-0789")
