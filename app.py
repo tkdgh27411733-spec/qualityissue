@@ -9,7 +9,7 @@ import json
 # ====================================================
 # [필수] 구글 웹 앱 URL을 입력하세요
 # ====================================================
-GAS_URL = "https://script.google.com/macros/s/AKfycbxhvD57DDgpuqzCJ6-wGJUAihh71fCV7GWumrpqJB4kjhbAxkXjZu3baBpoZifz-JR5Pg/exec"
+GAS_URL = "여기에_웹앱_URL을_붙여넣으세요"
 
 # 페이지 설정
 st.set_page_config(page_title="스마트 종합 품질관리 시스템 (Smart QMS)", page_icon="🛡️", layout="wide")
@@ -31,7 +31,11 @@ if 'IQC' not in st.session_state:
     ]
 if 'PQC' not in st.session_state:
     st.session_state.PQC = [
-        {"id": 1, "time": "11:20:05", "line": "Line-2 (Assembly A)", "type": "중물", "val": 50.02, "pass": "True", "inspectDate": today_str}
+        {"id": 1, "time": "11:20:05", "line": "Line-2 (Assembly A)", "type": "중물", "val": 50.02, "pass": "True", "inspectDate": today_str},
+        {"id": 2, "time": "11:25:10", "line": "Line-2 (Assembly A)", "type": "중물", "val": 50.03, "pass": "True", "inspectDate": today_str},
+        {"id": 3, "time": "11:30:15", "line": "Line-1 (SMT Main)", "type": "초물", "val": 49.98, "pass": "True", "inspectDate": today_str},
+        {"id": 4, "time": "11:35:20", "line": "Line-1 (SMT Main)", "type": "초물", "val": 50.05, "pass": "True", "inspectDate": today_str},
+        {"id": 5, "time": "11:40:25", "line": "Line-3 (Packaging)", "type": "종물", "val": 50.01, "pass": "True", "inspectDate": today_str},
     ]
 if 'VOC' not in st.session_state:
     st.session_state.VOC = [
@@ -119,15 +123,12 @@ if selected_menu == "📊 통합 대시보드":
     
     st.divider()
 
-    # 그래프 영역 1: IQC 판정 상태 비율 & PQC 라인별 검사 현황
     g_col1, g_col2 = st.columns(2)
-    
     with g_col1:
         st.subheader("📦 IQC 수입검사 판정 분포")
         if iqc_data:
             df_iqc = pd.DataFrame(iqc_data)
             status_col = next((col for col in ["status", "Status", "STATUS"] if col in df_iqc.columns), None)
-            
             if status_col:
                 status_counts = df_iqc[status_col].value_counts().reset_index()
                 status_counts.columns = ["status", "count"]
@@ -143,7 +144,6 @@ if selected_menu == "📊 통합 대시보드":
         if pqc_data:
             df_pqc = pd.DataFrame(pqc_data)
             line_col = next((col for col in ["line", "Line", "LINE"] if col in df_pqc.columns), None)
-            
             if line_col:
                 line_counts = df_pqc[line_col].value_counts().reset_index()
                 line_counts.columns = ["line", "count"]
@@ -155,15 +155,12 @@ if selected_menu == "📊 통합 대시보드":
         else:
             st.info("표시할 PQC 데이터가 없습니다.")
 
-    # 그래프 영역 2: CAPA 상태 및 VOC 클레임 현황
     g_col3, g_col4 = st.columns(2)
-
     with g_col3:
         st.subheader("🔄 CAPA 조치 상태 현황")
         if capa_data:
             df_capa = pd.DataFrame(capa_data)
             status_col_c = next((col for col in ["status", "Status", "STATUS"] if col in df_capa.columns), None)
-            
             if status_col_c:
                 capa_status = df_capa[status_col_c].value_counts().reset_index()
                 capa_status.columns = ["status", "count"]
@@ -180,7 +177,6 @@ if selected_menu == "📊 통합 대시보드":
         if voc_data:
             df_voc = pd.DataFrame(voc_data)
             cust_col = next((col for col in ["customer", "Customer", "CUSTOMER"] if col in df_voc.columns), None)
-            
             if cust_col:
                 cust_counts = df_voc[cust_col].value_counts().reset_index()
                 cust_counts.columns = ["customer", "count"]
@@ -209,13 +205,9 @@ elif selected_menu == "📦 IQC (수입/입고 검사)":
                 if supplier and item_name:
                     new_id = f"IQC-2026-{len(st.session_state.IQC)+1:03d}"
                     new_data = {
-                        "id": new_id, 
-                        "supplier": supplier, 
-                        "itemName": item_name, 
-                        "qty": int(qty), 
-                        "status": status,
-                        "inspectDate": str(inspect_date),
-                        "judgeDate": str(judge_date)
+                        "id": new_id, "supplier": supplier, "itemName": item_name, 
+                        "qty": int(qty), "status": status,
+                        "inspectDate": str(inspect_date), "judgeDate": str(judge_date)
                     }
                     save_data("IQC", new_data)
                     st.success("IQC 항목이 성공적으로 추가되었습니다!")
@@ -289,11 +281,8 @@ elif selected_menu == "🎧 고객 품질 (VOC/RMA)":
                 if cust and item:
                     new_data = {
                         "id": f"VOC-2026-{len(st.session_state.VOC)+1:03d}",
-                        "customer": cust, 
-                        "itemName": item, 
-                        "defectType": defect, 
-                        "status": "접수 완료",
-                        "inspectDate": str(inspect_date)
+                        "customer": cust, "itemName": item, "defectType": defect, 
+                        "status": "접수 완료", "inspectDate": str(inspect_date)
                     }
                     save_data("VOC", new_data)
                     st.success("VOC 클레임이 접수되었습니다!")
@@ -329,11 +318,8 @@ elif selected_menu == "🔄 CAPA (8D 개선 조치)":
                 if title and assignee:
                     new_data = {
                         "id": f"CAPA-2026-{len(st.session_state.CAPA)+1:03d}",
-                        "title": title,
-                        "status": status,
-                        "assignee": assignee,
-                        "inspectDate": str(inspect_date),
-                        "dueDate": str(due_date)
+                        "title": title, "status": status, "assignee": assignee,
+                        "inspectDate": str(inspect_date), "dueDate": str(due_date)
                     }
                     save_data("CAPA", new_data)
                     st.success("CAPA 8D 항목이 발행되었습니다!")
@@ -354,12 +340,46 @@ elif selected_menu == "🔄 CAPA (8D 개선 조치)":
     st.dataframe(pd.DataFrame(st.session_state.CAPA), use_container_width=True)
 
 elif selected_menu == "📈 SPC (통계적 공정관리)":
-    st.title("📈 SPC 통계적 공정 관리")
-    sample_no = [f"#{i}" for i in range(1, 11)]
-    measurements = [50.01, 50.03, 49.98, 50.02, 50.05, 50.04, 50.06, 50.02, 49.99, 50.01]
+    st.title("📈 SPC 통계적 공정 관리 (PQC 연동 X-bar 관리도)")
+    st.markdown("PQC(공정 품질) 모듈에서 실시간으로 입력된 측정 치수 데이터(`val`)를 기반으로 공정능력 및 관리도를 표시합니다.")
     
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=sample_no, y=measurements, mode='lines+markers', name='측정치 (mm)'))
-    fig.add_trace(go.Scatter(x=sample_no, y=[50.10]*10, mode='lines', name='UCL', line=dict(dash='dash', color='red')))
-    fig.add_trace(go.Scatter(x=sample_no, y=[49.90]*10, mode='lines', name='LSL', line=dict(dash='dash', color='red')))
-    st.plotly_chart(fig, use_container_width=True)
+    pqc_data = load_data("PQC", st.session_state.PQC)
+    
+    if pqc_data:
+        df_pqc = pd.DataFrame(pqc_data)
+        if "val" in df_pqc.columns:
+            # 순서 번호 및 측정값 추출
+            df_pqc["val"] = pd.to_numeric(df_pqc["val"], errors="coerce")
+            df_pqc = df_pqc.dropna(subset=["val"])
+            
+            if len(df_pqc) > 0:
+                sample_no = [f"#{i+1} ({row.get('line', 'Line')})" for i, row in df_pqc.iterrows()]
+                measurements = df_pqc["val"].tolist()
+                
+                # SPC 관리도 차트 생성
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=sample_no, y=measurements, mode='lines+markers', name='실시간 측정치 (mm)', line=dict(color='blue', width=2)))
+                fig.add_trace(go.Scatter(x=sample_no, y=[50.10]*len(measurements), mode='lines', name='UCL (상한선: 50.10)', line=dict(dash='dash', color='red')))
+                fig.add_trace(go.Scatter(x=sample_no, y=[50.00]*len(measurements), mode='lines', name='CL (중심선: 50.00)', line=dict(dash='dot', color='green')))
+                fig.add_trace(go.Scatter(x=sample_no, y=[49.90]*len(measurements), mode='lines', name='LSL (하한선: 49.90)', line=dict(dash='dash', color='red')))
+                
+                fig.update_layout(
+                    title="실시간 PQC 측정 데이터 연동 X-bar 관리도",
+                    xaxis_title="샘플 순서 및 라인",
+                    yaxis_title="측정 치수 (mm)",
+                    hovermode="x unified"
+                )
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # 통계 요약 지표 제공
+                col_s1, col_s2, col_s3, col_s4 = st.columns(4)
+                col_s1.metric("총 측정 건수", f"{len(measurements)} 건")
+                col_s2.metric("평균값 (Mean)", f"{sum(measurements)/len(measurements):.3f} mm")
+                col_s3.metric("최대값 (Max)", f"{max(measurements):.3f} mm")
+                col_s4.metric("최소값 (Min)", f"{min(measurements):.3f} mm")
+            else:
+                st.info("유효한 숫자 형태의 PQC 측정 데이터가 없습니다.")
+        else:
+            st.info("PQC 데이터에 'val' 측정값 필드가 존재하지 않습니다.")
+    else:
+        st.info("연동할 PQC 데이터가 없습니다. PQC 메뉴에서 측정값을 먼저 입력해 주세요.")
