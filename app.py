@@ -59,15 +59,17 @@ def save_data(sheet_name, data_dict):
         st.warning("GAS_URL이 설정되지 않았습니다.")
     return False
 
-# 세션 초기화
+# 세션 초기화 (기본값에 날짜 필드 포함)
+today_str = datetime.now().strftime("%Y-%m-%d")
+
 if 'IQC' not in st.session_state:
-    st.session_state.IQC = load_data("IQC", [{"id": "IQC-2026-001", "supplier": "(주)한국알루미늄", "itemName": "AL6061 압출재", "qty": 5000, "status": "합격"}])
+    st.session_state.IQC = load_data("IQC", [{"id": "IQC-2026-001", "supplier": "(주)한국알루미늄", "itemName": "AL6061 압출재", "qty": 5000, "status": "합격", "inspectDate": today_str, "judgeDate": today_str}])
 if 'PQC' not in st.session_state:
-    st.session_state.PQC = load_data("PQC", [{"id": 1, "time": "11:20:05", "line": "Line-2 (Assembly A)", "type": "중물", "val": 50.02, "pass": "True"}])
+    st.session_state.PQC = load_data("PQC", [{"id": 1, "time": "11:20:05", "line": "Line-2 (Assembly A)", "type": "중물", "val": 50.02, "pass": "True", "inspectDate": today_str}])
 if 'VOC' not in st.session_state:
-    st.session_state.VOC = load_data("VOC", [{"id": "VOC-2026-001", "customer": "현대모빌리티", "itemName": "스티어링 모듈", "defectType": "유격 미세 초과", "status": "접수 완료"}])
+    st.session_state.VOC = load_data("VOC", [{"id": "VOC-2026-001", "customer": "현대모빌리티", "itemName": "스티어링 모듈", "defectType": "유격 미세 초과", "status": "접수 완료", "inspectDate": today_str}])
 if 'CAPA' not in st.session_state:
-    st.session_state.CAPA = load_data("CAPA", [{"id": "CAPA-2026-012", "title": "모터 하우징 치수 이탈", "status": "조치 중", "assignee": "이보람 과장", "dueDate": "2026-08-04"}])
+    st.session_state.CAPA = load_data("CAPA", [{"id": "CAPA-2026-012", "title": "모터 하우징 치수 이탈", "status": "조치 중", "assignee": "이보람 과장", "dueDate": "2026-08-04", "inspectDate": today_str}])
 
 
 # ----------------------------------------------------
@@ -122,13 +124,20 @@ if selected_menu == "📊 통합 대시보드":
         st.subheader("📦 IQC 수입검사 판정 분포")
         if iqc_data:
             df_iqc = pd.DataFrame(iqc_data)
-            if "status" in df_iqc.columns:
-                status_counts = df_iqc["status"].value_counts().reset_index()
+            # 대소문자나 키 이름 유연하게 대응
+            status_col = None
+            for col in ["status", "Status", "STATUS"]:
+                if col in df_iqc.columns:
+                    status_col = col
+                    break
+            
+            if status_col:
+                status_counts = df_iqc[status_col].value_counts().reset_index()
                 status_counts.columns = ["status", "count"]
                 fig_iqc = px.pie(status_counts, names="status", values="count", hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
                 st.plotly_chart(fig_iqc, use_container_width=True)
             else:
-                st.info("데이터에 상태(status) 필드가 없습니다.")
+                st.info("데이터에 상태(status) 정보가 없습니다.")
         else:
             st.info("표시할 IQC 데이터가 없습니다.")
 
@@ -136,14 +145,20 @@ if selected_menu == "📊 통합 대시보드":
         st.subheader("🔬 PQC 라인별 검사 건수")
         if pqc_data:
             df_pqc = pd.DataFrame(pqc_data)
-            if "line" in df_pqc.columns:
-                line_counts = df_pqc["line"].value_counts().reset_index()
+            line_col = None
+            for col in ["line", "Line", "LINE"]:
+                if col in df_pqc.columns:
+                    line_col = col
+                    break
+            
+            if line_col:
+                line_counts = df_pqc[line_col].value_counts().reset_index()
                 line_counts.columns = ["line", "count"]
                 fig_pqc = px.bar(line_counts, x="line", y="count", color="line", text="count", color_discrete_sequence=px.colors.qualitative.Set2)
                 fig_pqc.update_layout(showlegend=False)
                 st.plotly_chart(fig_pqc, use_container_width=True)
             else:
-                st.info("데이터에 라인(line) 필드가 없습니다.")
+                st.info("데이터에 라인(line) 정보가 없습니다.")
         else:
             st.info("표시할 PQC 데이터가 없습니다.")
 
@@ -154,8 +169,14 @@ if selected_menu == "📊 통합 대시보드":
         st.subheader("🔄 CAPA 조치 상태 현황")
         if capa_data:
             df_capa = pd.DataFrame(capa_data)
-            if "status" in df_capa.columns:
-                capa_status = df_capa["status"].value_counts().reset_index()
+            status_col_c = None
+            for col in ["status", "Status", "STATUS"]:
+                if col in df_capa.columns:
+                    status_col_c = col
+                    break
+            
+            if status_col_c:
+                capa_status = df_capa[status_col_c].value_counts().reset_index()
                 capa_status.columns = ["status", "count"]
                 fig_capa = px.bar(capa_status, x="status", y="count", color="status", text="count", color_discrete_sequence=px.colors.qualitative.Safe)
                 fig_capa.update_layout(showlegend=False)
@@ -166,11 +187,17 @@ if selected_menu == "📊 통합 대시보드":
             st.info("표시할 CAPA 데이터가 없습니다.")
 
     with g_col4:
-        st.subheader("🎧 VOC 클레임 접수 현황")
+        st.subheader("🎧 VOC 고객사별 클레임 현황")
         if voc_data:
             df_voc = pd.DataFrame(voc_data)
-            if "customer" in df_voc.columns:
-                cust_counts = df_voc["customer"].value_counts().reset_index()
+            cust_col = None
+            for col in ["customer", "Customer", "CUSTOMER"]:
+                if col in df_voc.columns:
+                    cust_col = col
+                    break
+            
+            if cust_col:
+                cust_counts = df_voc[cust_col].value_counts().reset_index()
                 cust_counts.columns = ["customer", "count"]
                 fig_voc = px.bar(cust_counts, x="customer", y="count", color="customer", text="count")
                 fig_voc.update_layout(showlegend=False)
@@ -189,7 +216,9 @@ elif selected_menu == "📦 IQC (수입/입고 검사)":
             supplier = col1.text_input("공급업체")
             item_name = col2.text_input("품목명")
             qty = col1.number_input("입고수량", value=1000)
-            status = col2.selectbox("판정", ["합격", "부적합", "검사대기"])
+            status = col2.selectbox("합불 판정", ["합격", "부적합", "검사대기"])
+            inspect_date = col1.date_input("검사 일자")
+            judge_date = col2.date_input("합불 판정 일자")
             
             if st.form_submit_button("등록 및 시트 저장"):
                 if supplier and item_name:
@@ -199,7 +228,9 @@ elif selected_menu == "📦 IQC (수입/입고 검사)":
                         "supplier": supplier, 
                         "itemName": item_name, 
                         "qty": qty, 
-                        "status": status
+                        "status": status,
+                        "inspectDate": str(inspect_date),
+                        "judgeDate": str(judge_date)
                     }
                     save_data("IQC", new_data)
                     st.rerun()
@@ -219,6 +250,7 @@ elif selected_menu == "🔬 PQC (공정 품질)":
         line = st.selectbox("생산 라인", ["Line-1 (SMT Main)", "Line-2 (Assembly A)", "Line-3 (Packaging)"])
         test_type = st.radio("검사 구분", ["초물 검사", "중물 자주검사", "종물 검사"], horizontal=True)
         meas_val = st.number_input("측정 치수 (mm) [규격: 50.00 ± 0.10]", value=50.00, format="%.2f")
+        inspect_date = st.date_input("검사 일자")
 
         if st.button("측정값 저장 및 전송"):
             is_pass = 49.90 <= meas_val <= 50.10
@@ -228,7 +260,8 @@ elif selected_menu == "🔬 PQC (공정 품질)":
                 "line": line,
                 "type": test_type,
                 "val": meas_val,
-                "pass": str(is_pass)
+                "pass": str(is_pass),
+                "inspectDate": str(inspect_date)
             }
             save_data("PQC", new_data)
             st.rerun()
@@ -243,15 +276,21 @@ elif selected_menu == "🎧 고객 품질 (VOC/RMA)":
     
     with st.expander("➕ 신규 VOC / 고객 클레임 접수", expanded=True):
         with st.form("voc_form", clear_on_submit=True):
-            cust = st.text_input("고객사명")
-            item = st.text_input("대상 품목")
-            defect = st.text_input("불량 유형")
+            col1, col2 = st.columns(2)
+            cust = col1.text_input("고객사명")
+            item = col2.text_input("대상 품목")
+            defect = col1.text_input("불량 유형")
+            inspect_date = col2.date_input("클레임 접수일자")
             
             if st.form_submit_button("클레임 접수 및 저장"):
                 if cust and item:
                     new_data = {
                         "id": f"VOC-2026-{len(st.session_state.VOC)+1:03d}",
-                        "customer": cust, "itemName": item, "defectType": defect, "status": "접수 완료"
+                        "customer": cust, 
+                        "itemName": item, 
+                        "defectType": defect, 
+                        "status": "접수 완료",
+                        "inspectDate": str(inspect_date)
                     }
                     save_data("VOC", new_data)
                     st.rerun()
@@ -269,7 +308,8 @@ elif selected_menu == "🔄 CAPA (8D 개선 조치)":
             title = col1.text_input("개선 조치 제목", placeholder="예: 사출 공정 버(Burr) 발생 개선")
             assignee = col2.text_input("담당자", placeholder="예: 홍길동 책임")
             status = col1.selectbox("조치 상태", ["조치 중", "검토 중", "완료", "보류"])
-            due_date = col2.date_input("완료 예정일")
+            inspect_date = col2.date_input("CAPA 발행일자")
+            due_date = col1.date_input("완료 예정일")
             
             if st.form_submit_button("CAPA 발행 및 시트 저장"):
                 if title and assignee:
@@ -278,6 +318,7 @@ elif selected_menu == "🔄 CAPA (8D 개선 조치)":
                         "title": title,
                         "status": status,
                         "assignee": assignee,
+                        "inspectDate": str(inspect_date),
                         "dueDate": str(due_date)
                     }
                     save_data("CAPA", new_data)
