@@ -10,7 +10,7 @@ import os
 # ====================================================
 # [필수] 구글 웹 앱 URL을 입력하세요
 # ====================================================
-GAS_URL = "여기에_웹앱_URL을_붙여넣으세요"
+GAS_URL = "https://script.google.com/macros/s/AKfycby3s6QeY3BWll-FEHu4TJmAVoJS-I9QJmhSpHpVObSgMSdxmvqBYhzFKmnI5b53BNWHvg/exec"
 DATA_FILE = "qms_storage.json"
 
 # 페이지 설정
