@@ -5,11 +5,13 @@ import plotly.graph_objects as go
 from datetime import datetime
 import requests
 import json
+import os
 
 # ====================================================
 # [필수] 구글 웹 앱 URL을 입력하세요
 # ====================================================
-GAS_URL = "https://script.google.com/macros/s/AKfycbzDKraAVbhl5h6bzC7Ai5rvxrhvqZG3YYBMqG8U6O24t9VQrF8KA6ZfopxFGKmXdzGZuQ/exec"
+GAS_URL = "여기에_웹앱_URL을_붙여넣으세요"
+DATA_FILE = "qms_storage.json"
 
 # 페이지 설정
 st.set_page_config(page_title="스마트 종합 품질관리 시스템 (Smart QMS)", page_icon="🛡️", layout="wide")
@@ -21,51 +23,71 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ----------------------------------------------------
-# 세션 초기화 (최우선 실행)
+# 로컬 파일 영구 저장 및 불러오기 함수
 # ----------------------------------------------------
+def load_local_storage():
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+def save_local_storage(data_dict):
+    try:
+        with open(DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump(data_dict, f, ensure_ascii=False, indent=4)
+    except Exception as e:
+        print(f"파일 저장 실패: {e}")
+
+# 앱 최초 실행 시 로컬 저장소 데이터 로드
+saved_storage = load_local_storage()
 today_str = datetime.now().strftime("%Y-%m-%d")
 
+# 세션 초기화 (로컬 파일에 데이터가 있으면 복원, 없으면 기본 샘플 생성)
 if 'IQC' not in st.session_state:
-    st.session_state.IQC = [
+    st.session_state.IQC = saved_storage.get("IQC", [
         {"id": "IQC-2026-001", "supplier": "(주)한국알루미늄", "itemName": "AL6061 압출재", "qty": 5000, "status": "합격", "inspectDate": today_str, "judgeDate": today_str}
-    ]
+    ])
 if 'PQC' not in st.session_state:
-    st.session_state.PQC = [
+    st.session_state.PQC = saved_storage.get("PQC", [
         {"id": 1, "time": "11:20:05", "line": "Line-2 (Assembly A)", "type": "중물", "val": 50.02, "pass": "True", "inspectDate": today_str},
         {"id": 2, "time": "11:25:10", "line": "Line-2 (Assembly A)", "type": "중물", "val": 50.03, "pass": "True", "inspectDate": today_str},
         {"id": 3, "time": "11:30:15", "line": "Line-1 (SMT Main)", "type": "초물", "val": 49.98, "pass": "True", "inspectDate": today_str},
         {"id": 4, "time": "11:35:20", "line": "Line-1 (SMT Main)", "type": "초물", "val": 50.05, "pass": "True", "inspectDate": today_str},
         {"id": 5, "time": "11:40:25", "line": "Line-3 (Packaging)", "type": "종물", "val": 50.01, "pass": "True", "inspectDate": today_str},
-    ]
+    ])
 if 'VOC' not in st.session_state:
-    st.session_state.VOC = [
+    st.session_state.VOC = saved_storage.get("VOC", [
         {"id": "VOC-2026-001", "customer": "현대모빌리티", "itemName": "스티어링 모듈", "defectType": "유격 미세 초과", "status": "접수 완료", "inspectDate": today_str}
-    ]
+    ])
 if 'CAPA' not in st.session_state:
-    st.session_state.CAPA = [
+    st.session_state.CAPA = saved_storage.get("CAPA", [
         {"id": "CAPA-2026-012", "title": "모터 하우징 치수 이탈", "status": "조치 중", "assignee": "이보람 과장", "dueDate": "2026-08-04", "inspectDate": today_str}
-    ]
+    ])
 
 # ----------------------------------------------------
-# 데이터 로드 및 저장 함수
+# 데이터 로드 및 저장 함수 (통합)
 # ----------------------------------------------------
-def load_data(sheet_name, default_fallback):
-    if GAS_URL.startswith("http"):
-        try:
-            response = requests.get(f"{GAS_URL}?sheet={sheet_name}", timeout=3, allow_redirects=True)
-            if response.status_code == 200:
-                data = response.json()
-                if isinstance(data, list) and len(data) > 0:
-                    return data
-        except Exception:
-            pass
-    return st.session_state.get(sheet_name, default_fallback)
+def sync_to_file():
+    current_data = {
+        "IQC": st.session_state.IQC,
+        "PQC": st.session_state.PQC,
+        "VOC": st.session_state.VOC,
+        "CAPA": st.session_state.CAPA
+    }
+    save_local_storage(current_data)
 
 def save_data(sheet_name, data_dict):
     if sheet_name not in st.session_state:
         st.session_state[sheet_name] = []
     st.session_state[sheet_name].append(data_dict)
+    
+    # 로컬 파일 즉시 동기화 (영구 저장)
+    sync_to_file()
 
+    # 구글 시트 연동 (URL이 설정된 경우)
     if GAS_URL.startswith("http"):
         try:
             payload = {"sheet": sheet_name, "data": data_dict}
@@ -76,8 +98,12 @@ def save_data(sheet_name, data_dict):
                     st.toast(f"[{sheet_name}] 구글 시트 저장 성공!", icon="✅")
                     return True
         except Exception:
-            st.toast(f"[{sheet_name}] 로컬 세션 저장 완료 (시트 통신 지연)", icon="ℹ️")
+            st.toast(f"[{sheet_name}] 로컬 영구 저장 완료 (시트 통신 지연)", icon="ℹ️")
     return True
+
+def delete_data(sheet_name, item_id):
+    st.session_state[sheet_name] = [item for item in st.session_state[sheet_name] if item["id"] != item_id]
+    sync_to_file()
 
 # ----------------------------------------------------
 # Sidebar Navigation
@@ -97,10 +123,11 @@ with st.sidebar:
         ]
     )
     st.divider()
+    st.success("💾 로컬 영구 저장 활성화됨")
     if GAS_URL.startswith("http"):
         st.success("🟢 구글 시트 DB 연결됨")
     else:
-        st.error("🔴 웹 앱 URL 미설정 상태")
+        st.info("⚪ 구글 시트 URL 미설정 (로컬 저장 모드)")
 
 # ====================================================
 # 각 메뉴별 화면 구현
@@ -201,7 +228,7 @@ elif selected_menu == "📦 IQC (수입/입고 검사)":
             inspect_date = col1.date_input("검사 일자")
             judge_date = col2.date_input("합불 판정 일자")
             
-            if st.form_submit_button("등록 및 시트 저장"):
+            if st.form_submit_button("등록 및 영구 저장"):
                 if supplier and item_name:
                     new_id = f"IQC-2026-{len(st.session_state.IQC)+1:03d}"
                     new_data = {
@@ -210,7 +237,7 @@ elif selected_menu == "📦 IQC (수입/입고 검사)":
                         "inspectDate": str(inspect_date), "judgeDate": str(judge_date)
                     }
                     save_data("IQC", new_data)
-                    st.success("IQC 항목이 성공적으로 추가되었습니다!")
+                    st.success("IQC 항목이 성공적으로 추가 및 저장되었습니다!")
                     st.rerun()
                 else:
                     st.warning("공급업체와 품목명을 입력해주세요.")
@@ -221,7 +248,7 @@ elif selected_menu == "📦 IQC (수입/입고 검사)":
         del_col1, del_col2 = st.columns([3, 1])
         selected_iqc_id = del_col1.selectbox("삭제할 IQC ID 선택", iqc_ids, key="del_iqc_select")
         if del_col2.button("선택 IQC 삭제", type="primary"):
-            st.session_state.IQC = [item for item in st.session_state.IQC if item["id"] != selected_iqc_id]
+            delete_data("IQC", selected_iqc_id)
             st.success(f"항목 [{selected_iqc_id}]이(가) 삭제되었습니다.")
             st.rerun()
             
@@ -240,8 +267,12 @@ elif selected_menu == "🔬 PQC (공정 품질)":
 
         if st.button("측정값 저장 및 전송"):
             is_pass = 49.90 <= meas_val <= 50.10
+            # 고유 ID 생성 (숫자형 최대값 + 1)
+            existing_ids = [item["id"] for item in st.session_state.PQC if isinstance(item["id"], int)]
+            next_pqc_id = max(existing_ids) + 1 if existing_ids else len(st.session_state.PQC) + 1
+            
             new_data = {
-                "id": len(st.session_state.PQC) + 1,
+                "id": next_pqc_id,
                 "time": datetime.now().strftime("%H:%M:%S"),
                 "line": line,
                 "type": test_type,
@@ -250,7 +281,7 @@ elif selected_menu == "🔬 PQC (공정 품질)":
                 "inspectDate": str(inspect_date)
             }
             save_data("PQC", new_data)
-            st.success("PQC 측정값이 저장되었습니다!")
+            st.success("PQC 측정값이 영구 저장되었습니다!")
             st.rerun()
 
     with col_log:
@@ -260,7 +291,7 @@ elif selected_menu == "🔬 PQC (공정 품질)":
             del_col1, del_col2 = st.columns([3, 1])
             selected_pqc_id = del_col1.selectbox("삭제할 PQC 번호(ID) 선택", pqc_ids, key="del_pqc_select")
             if del_col2.button("선택 PQC 삭제", type="primary"):
-                st.session_state.PQC = [item for item in st.session_state.PQC if item["id"] != selected_pqc_id]
+                delete_data("PQC", selected_pqc_id)
                 st.success(f"항목 [{selected_pqc_id}]이(가) 삭제되었습니다.")
                 st.rerun()
                 
@@ -285,7 +316,7 @@ elif selected_menu == "🎧 고객 품질 (VOC/RMA)":
                         "status": "접수 완료", "inspectDate": str(inspect_date)
                     }
                     save_data("VOC", new_data)
-                    st.success("VOC 클레임이 접수되었습니다!")
+                    st.success("VOC 클레임이 저장되었습니다!")
                     st.rerun()
                 else:
                     st.warning("고객사명과 대상 품목을 입력해주세요.")
@@ -296,7 +327,7 @@ elif selected_menu == "🎧 고객 품질 (VOC/RMA)":
         del_col1, del_col2 = st.columns([3, 1])
         selected_voc_id = del_col1.selectbox("삭제할 VOC ID 선택", voc_ids, key="del_voc_select")
         if del_col2.button("선택 VOC 삭제", type="primary"):
-            st.session_state.VOC = [item for item in st.session_state.VOC if item["id"] != selected_voc_id]
+            delete_data("VOC", selected_voc_id)
             st.success(f"항목 [{selected_voc_id}]이(가) 삭제되었습니다.")
             st.rerun()
             
@@ -314,7 +345,7 @@ elif selected_menu == "🔄 CAPA (8D 개선 조치)":
             inspect_date = col2.date_input("CAPA 발행일자")
             due_date = col1.date_input("완료 예정일")
             
-            if st.form_submit_button("CAPA 발행 및 시트 저장"):
+            if st.form_submit_button("CAPA 발행 및 저장"):
                 if title and assignee:
                     new_data = {
                         "id": f"CAPA-2026-{len(st.session_state.CAPA)+1:03d}",
@@ -322,7 +353,7 @@ elif selected_menu == "🔄 CAPA (8D 개선 조치)":
                         "inspectDate": str(inspect_date), "dueDate": str(due_date)
                     }
                     save_data("CAPA", new_data)
-                    st.success("CAPA 8D 항목이 발행되었습니다!")
+                    st.success("CAPA 8D 항목이 영구 저장되었습니다!")
                     st.rerun()
                 else:
                     st.warning("제목과 담당자를 입력해주세요.")
@@ -333,7 +364,7 @@ elif selected_menu == "🔄 CAPA (8D 개선 조치)":
         del_col1, del_col2 = st.columns([3, 1])
         selected_capa_id = del_col1.selectbox("삭제할 CAPA ID 선택", capa_ids, key="del_capa_select")
         if del_col2.button("선택 CAPA 삭제", type="primary"):
-            st.session_state.CAPA = [item for item in st.session_state.CAPA if item["id"] != selected_capa_id]
+            delete_data("CAPA", selected_capa_id)
             st.success(f"항목 [{selected_capa_id}]이(가) 삭제되었습니다.")
             st.rerun()
             
@@ -343,12 +374,11 @@ elif selected_menu == "📈 SPC (통계적 공정관리)":
     st.title("📈 SPC 통계적 공정 관리 (PQC 연동 X-bar 관리도)")
     st.markdown("PQC(공정 품질) 모듈에서 실시간으로 입력된 측정 치수 데이터(`val`)를 기반으로 공정능력 및 관리도를 표시합니다.")
     
-    pqc_data = load_data("PQC", st.session_state.PQC)
+    pqc_data = st.session_state.PQC
     
     if pqc_data:
         df_pqc = pd.DataFrame(pqc_data)
         if "val" in df_pqc.columns:
-            # 순서 번호 및 측정값 추출
             df_pqc["val"] = pd.to_numeric(df_pqc["val"], errors="coerce")
             df_pqc = df_pqc.dropna(subset=["val"])
             
@@ -356,7 +386,6 @@ elif selected_menu == "📈 SPC (통계적 공정관리)":
                 sample_no = [f"#{i+1} ({row.get('line', 'Line')})" for i, row in df_pqc.iterrows()]
                 measurements = df_pqc["val"].tolist()
                 
-                # SPC 관리도 차트 생성
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(x=sample_no, y=measurements, mode='lines+markers', name='실시간 측정치 (mm)', line=dict(color='blue', width=2)))
                 fig.add_trace(go.Scatter(x=sample_no, y=[50.10]*len(measurements), mode='lines', name='UCL (상한선: 50.10)', line=dict(dash='dash', color='red')))
@@ -371,7 +400,6 @@ elif selected_menu == "📈 SPC (통계적 공정관리)":
                 )
                 st.plotly_chart(fig, use_container_width=True)
                 
-                # 통계 요약 지표 제공
                 col_s1, col_s2, col_s3, col_s4 = st.columns(4)
                 col_s1.metric("총 측정 건수", f"{len(measurements)} 건")
                 col_s2.metric("평균값 (Mean)", f"{sum(measurements)/len(measurements):.3f} mm")
